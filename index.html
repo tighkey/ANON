@@ -3,64 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ANON v3.6 EMERGENCY</title>
+    <title>ANON v3.7</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: white; padding: 10px; }
-        .btn { border: none; padding: 20px; font-size: 18px; border-radius: 12px; color: white; width: 90%; margin: 5px; }
-        .log { font-size: 10px; background: #000; color: #0f0; text-align: left; height: 150px; overflow: scroll; padding: 10px; margin-top: 10px; border: 1px solid #333; }
+        body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: white; }
+        .btn { border: none; padding: 20px; font-size: 18px; border-radius: 12px; color: white; width: 90%; margin: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
-    <h3>ANON EMERGENCY v3.6</h3>
-    <button id="pBtn" class="btn" style="background:#007aff">1. センサーON</button>
-    <button id="cBtn" class="btn" style="background:#ff9500">2. ANONに接続</button>
-    <button id="tBtn" class="btn" style="background:#5cb85c">3. テスト送信</button>
-    <div id="log" class="log">> ログ待機中...<br></div>
-
+    <h3>ANON v3.7</h3>
+    <button id="p" class="btn" style="background:#007aff">1. センサー許可</button>
+    <button id="c" class="btn" style="background:#ff9500">2. ANONに接続</button>
+    <div style="font-size: 30px; margin: 20px;">P: <span id="pitch">0</span></div>
+    
     <script>
-        const UART_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-        const UART_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+        const SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+        const RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
         let tx = null;
 
-        function logger(m) { const l = document.getElementById('log'); l.innerHTML += "> " + m + "<br>"; l.scrollTop = l.scrollHeight; }
-
-        document.getElementById('pBtn').onclick = () => {
-            DeviceOrientationEvent.requestPermission().then(r => { if(r==='granted') logger("センサー許可"); });
+        document.getElementById('p').onclick = () => {
+            DeviceOrientationEvent.requestPermission().then(res => { if(res==='granted') start(); });
         };
 
-        document.getElementById('cBtn').onclick = async () => {
-            try {
-                logger("探索...");
-                const d = await navigator.bluetooth.requestDevice({ filters:[{namePrefix:'BBC micro:bit'}], optionalServices:[UART_SERVICE] });
-                const s = await d.gatt.connect();
-                const sv = await s.getPrimaryService(UART_SERVICE);
-                tx = await sv.getCharacteristic(UART_RX);
-                logger("【接続成功】");
-            } catch(e) { logger("接続エラー: " + e); }
-        };
-
-        // 返事を待たずに送信する（フリーズ防止）
-        function send(m) {
-            if(!tx) return;
-            const data = new TextEncoder().encode(m);
-            tx.writeValueWithoutResponse(data).catch(e => logger("送信失敗: " + e));
+        function start() {
+            window.addEventListener('deviceorientation', (e) => {
+                let valP = Math.max(-10, Math.min(10, Math.round((e.beta || 0) * (10/30))));
+                let valR = Math.max(-10, Math.min(10, Math.round((e.gamma || 0) * (10/20))));
+                document.getElementById('pitch').innerText = valP;
+                if(tx) {
+                    const data = new TextEncoder().encode(valP + "," + valR + "\n");
+                    // 応答を待たずに投げっぱなす（これが一番安定します）
+                    tx.writeValueWithoutResponse(data).catch(err => console.log(err));
+                }
+            });
         }
 
-        document.getElementById('tBtn').onclick = () => {
-            logger("強制送信: 5,0");
-            send("5,0\n");
+        document.getElementById('c').onclick = async () => {
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: 'BBC micro:bit' }],
+                    optionalServices: [SVC]
+                });
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(SVC);
+                tx = await service.getCharacteristic(RX);
+                alert("リンク完了！");
+            } catch (e) { alert("接続エラー: " + e); }
         };
-
-        window.addEventListener('deviceorientation', (e) => {
-            if(!tx) return;
-            let p = Math.max(-10, Math.min(10, Math.round((e.beta||0)*(10/30))));
-            let r = Math.max(-10, Math.min(10, Math.round((e.gamma||0)*(10/20))));
-            const now = Date.now();
-            if(now - (window.lt||0) > 200) {
-                send(p + "," + r + "\n");
-                window.lt = now;
-            }
-        });
     </script>
 </body>
 </html>
