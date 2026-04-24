@@ -3,53 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ANON JOYSTICK v8.5</title>
+    <title>ANON Web-Joystick</title>
     <style>
         body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: #fff; touch-action: none; overflow: hidden; margin: 0; }
-        #joystick-container { width: 280px; height: 280px; background: #333; border-radius: 50%; margin: 50px auto; position: relative; border: 4px solid #555; }
-        #stick { width: 80px; height: 80px; background: #ff9500; border-radius: 50%; position: absolute; top: 100px; left: 100px; }
-        .btn { border: none; padding: 20px; font-size: 18px; border-radius: 12px; color: white; width: 85%; margin: 20px; font-weight: bold; }
+        #joy-base { width: 280px; height: 280px; background: #333; border-radius: 50%; margin: 40px auto; position: relative; border: 4px solid #555; }
+        #joy-stick { width: 80px; height: 80px; background: #ff9500; border-radius: 50%; position: absolute; top: 100px; left: 100px; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
+        .btn { border: none; padding: 18px; font-size: 18px; border-radius: 12px; color: white; width: 85%; margin: 20px; font-weight: bold; background: #ff9500; }
+        #debug { font-size: 24px; font-family: monospace; color: #0f0; }
     </style>
 </head>
 <body>
-    <h3>ANON v8.5 FINAL TEST</h3>
-    <button id="connect" class="btn" style="background:#ff9500">ANONに接続</button>
-    <div id="joystick-container"><div id="stick"></div></div>
-    <div id="debug" style="font-size:24px; color:#0f0;">0, 0</div>
+    <h3>ANON Web-Joystick v3.0</h3>
+    <button id="connect" class="btn">ANONに接続</button>
+    <div id="joy-base"><div id="joy-stick"></div></div>
+    <div id="debug">0, 0</div>
 
     <script>
         const SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
         const TX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
         let txChar = null;
-        const container = document.getElementById('joystick-container');
-        const stick = document.getElementById('stick');
+        const base = document.getElementById('joy-base');
+        const stick = document.getElementById('joy-stick');
         let limit = 100;
 
         async function send(y, x) {
             if (!txChar) return;
-            // 区切り文字を「!」に変更して確実に届ける
-            const data = new TextEncoder().encode(y + "," + x + "!");
-            // 確実な書き込み方式に変更
-            txChar.writeValue(data).catch(()=>{});
+            const data = new TextEncoder().encode(y + "," + x + "\n");
+            txChar.writeValueWithoutResponse(data).catch(()=>{});
         }
 
-        container.addEventListener('touchmove', e => {
+        base.addEventListener('touchmove', e => {
             e.preventDefault();
             const touch = e.touches[0];
-            const rect = container.getBoundingClientRect();
+            const rect = base.getBoundingClientRect();
             let dx = touch.clientX - (rect.left + rect.width / 2);
             let dy = touch.clientY - (rect.top + rect.height / 2);
             const dist = Math.sqrt(dx*dx + dy*dy);
             if (dist > limit) { dx *= limit/dist; dy *= limit/dist; }
             stick.style.transform = `translate(${dx}px, ${dy}px)`;
+            
+            // Y軸は上がプラスになるように反転
             let valY = Math.round((dy / limit) * -10);
             let valX = Math.round((dx / limit) * 10);
             document.getElementById('debug').innerText = `${valY}, ${valX}`;
             send(valY, valX);
         });
 
-        container.addEventListener('touchend', () => {
+        base.addEventListener('touchend', () => {
             stick.style.transform = `translate(0, 0)`;
+            document.getElementById('debug').innerText = "0, 0";
             send(0, 0);
         });
 
@@ -62,7 +64,7 @@
                 const server = await device.gatt.connect();
                 const service = await server.getPrimaryService(SVC);
                 txChar = await service.getCharacteristic(TX);
-                alert("ANON 通信開通！");
+                alert("ANON リンク完了！");
             } catch (e) { alert("Error: " + e); }
         };
     </script>
