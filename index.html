@@ -3,121 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ANON v3.3 FINAL</title>
+    <title>ANON v3.4 DEBUGGER</title>
     <style>
-        body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; padding-top: 20px; }
-        .btn { border: none; padding: 18px; font-size: 16px; border-radius: 12px; color: white; font-weight: bold; margin: 8px; width: 85%; }
+        body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; padding-top: 10px; }
+        .btn { border: none; padding: 15px; font-size: 16px; border-radius: 10px; color: white; font-weight: bold; margin: 5px; width: 90%; }
         #permissionBtn { background: #007aff; }
         #connectBtn { background: #ff9500; }
-        #testBtn { background: #5cb85c; } /* テスト用：強制前進 */
-        .log-box { font-size: 11px; margin: 10px; padding: 10px; background: #000; border-radius: 5px; color: #0f0; text-align: left; height: 100px; overflow-y: scroll; font-family: monospace; }
-        .val-display { font-size: 24px; margin: 15px; font-weight: bold; }
-        .indicator { width: 20px; height: 20px; background: #333; border-radius: 50%; display: inline-block; margin: 5px; border: 1px solid #555; }
+        #testBtn { background: #5cb85c; }
+        .log-box { font-size: 10px; margin: 10px; padding: 10px; background: #000; border-radius: 5px; color: #0f0; text-align: left; height: 180px; overflow-y: scroll; font-family: monospace; border: 1px solid #333; }
+        .indicator { width: 15px; height: 15px; background: #333; border-radius: 50%; display: inline-block; margin-right: 5px; }
     </style>
 </head>
 <body>
-    <h3>ANON CONTROL v3.3</h3>
+    <h3>ANON FINAL DEBUG v3.4</h3>
     
     <button id="permissionBtn" class="btn">1. センサー有効化</button>
-    <button id="connectBtn" class="btn">2. ANON接続 (UART)</button>
-    <button id="testBtn" class="btn">3. 接続テスト (1秒前進)</button>
+    <button id="connectBtn" class="btn">2. ANON接続 (UART探索)</button>
+    <button id="testBtn" class="btn">3. 強制送信テスト</button>
 
-    <div class="val-display">
-        P: <span id="pitch">0</span> | R: <span id="roll">0</span>
-    </div>
-
-    <div>
-        <div id="ind-sensor" class="indicator"></div> センサー
-        <div id="ind-bt" class="indicator"></div> 接続
-        <div id="ind-tx" class="indicator"></div> 送信
-    </div>
-
-    <div id="log" class="log-box">--- システムログ ---<br></div>
+    <div style="font-size: 18px; margin: 10px;">P: <span id="pitch">0</span> | R: <span id="roll">0</span></div>
+    
+    <div id="log" class="log-box">--- DEBUG LOG ---<br></div>
 
     <script>
+        // micro:bit UART UUIDs
         const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-        const UART_RX_CHARACTERISTIC_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+        const UART_RX_CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // Phone -> micro:bit
+        
         let txChar = null;
 
         function logger(msg) {
             const logDiv = document.getElementById('log');
             logDiv.innerHTML += "> " + msg + "<br>";
             logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(msg);
         }
 
-        // 1. センサー
-        document.getElementById('permissionBtn').addEventListener('click', () => {
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission().then(res => {
-                    if (res === 'granted') {
-                        document.getElementById('ind-sensor').style.background = "#007aff";
-                        logger("センサー許可完了");
-                        startOrientation();
-                    }
-                });
-            } else { startOrientation(); }
-        });
-
-        function startOrientation() {
-            window.addEventListener('deviceorientation', (event) => {
-                let p = Math.max(-10, Math.min(10, Math.round((event.beta || 0) * (10 / 30))));
-                let r = Math.max(-10, Math.min(10, Math.round((event.gamma || 0) * (10 / 20))));
-                document.getElementById('pitch').innerText = p;
-                document.getElementById('roll').innerText = r;
-                sendData(p, r);
+        // センサー
+        document.getElementById('permissionBtn').onclick = () => {
+            DeviceOrientationEvent.requestPermission().then(res => {
+                if(res === 'granted') {
+                    logger("センサー許可OK");
+                    window.addEventListener('deviceorientation', (e) => {
+                        let p = Math.max(-10, Math.min(10, Math.round((e.beta || 0) * (10 / 30))));
+                        let r = Math.max(-10, Math.min(10, Math.round((e.gamma || 0) * (10 / 20))));
+                        document.getElementById('pitch').innerText = p;
+                        document.getElementById('roll').innerText = r;
+                        if(txChar) send(p + "," + r + "\n");
+                    });
+                }
             });
-        }
+        };
 
-        // 2. データ送信コア
-        function sendData(p, r) {
-            if (!txChar) return;
-            const now = Date.now();
-            if (now - window.lastTime < 150) return;
-            window.lastTime = now;
-
-            const cmd = p + "," + r + "\n";
-            txChar.writeValue(new TextEncoder().encode(cmd))
-                .then(() => {
-                    document.getElementById('ind-tx').style.background = "#5cb85c";
-                    setTimeout(() => document.getElementById('ind-tx').style.background = "#333", 50);
-                })
-                .catch(e => { console.log(e); });
-        }
-
-        // 3. Bluetooth接続
-        document.getElementById('connectBtn').addEventListener('click', async () => {
+        // Bluetooth接続
+        document.getElementById('connectBtn').onclick = async () => {
             try {
-                logger("デバイス探索中...");
+                logger("探索開始...");
                 const device = await navigator.bluetooth.requestDevice({
                     filters: [{ namePrefix: 'BBC micro:bit' }],
                     optionalServices: [UART_SERVICE_UUID]
                 });
                 
-                logger("接続中...");
+                logger("GATT接続中...");
                 const server = await device.gatt.connect();
                 
-                logger("サービス検索中...");
+                logger("UARTサービス検索...");
                 const service = await server.getPrimaryService(UART_SERVICE_UUID);
                 
-                logger("書き込み窓口を特定中...");
-                txChar = await service.getCharacteristic(UART_RX_CHARACTERISTIC_UUID);
+                logger("RX窓口(0002)を検索...");
+                txChar = await service.getCharacteristic(UART_RX_CHAR_UUID);
                 
-                document.getElementById('ind-bt').style.background = "#ff9500";
-                logger("全工程完了：準備OK");
-                alert("ANONとリンクしました！");
+                logger("【成功】送信準備完了！");
+                alert("リンク成功！");
             } catch (e) {
-                logger("エラー: " + e);
-                alert("接続失敗: " + e);
+                logger("エラー: " + e.name + " - " + e.message);
+                alert("失敗: " + e.message);
             }
-        });
+        };
 
-        // 4. 強制テストボタン
-        document.getElementById('testBtn').addEventListener('click', () => {
-            if (!txChar) { alert("先に接続してください"); return; }
-            logger("テスト送信: 前進コマンド");
-            sendData(10, 0); // 前進
-            setTimeout(() => sendData(0, 0), 1000); // 1秒後に停止
-        });
+        // 送信関数
+        async function send(msg) {
+            if (!txChar) return;
+            try {
+                const data = new TextEncoder().encode(msg);
+                // writeValueWithoutResponseの方が高速で安定する場合があります
+                await txChar.writeValueWithoutResponse(data);
+            } catch (e) {
+                logger("送信失敗: " + e.message);
+                txChar = null; // エラー時はリセット
+            }
+        }
+
+        document.getElementById('testBtn').onclick = () => {
+            if(!txChar) { logger("未接続です"); return; }
+            logger("テストデータ送信...");
+            send("5,0\n");
+            setTimeout(() => send("0,0\n"), 1000);
+        };
     </script>
 </body>
 </html>
