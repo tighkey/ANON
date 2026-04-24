@@ -3,87 +3,66 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ANON JOYSTICK</title>
+    <title>ANON JOYSTICK v8.1</title>
     <style>
         body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: #fff; touch-action: none; overflow: hidden; margin: 0; }
-        #joystick-container { width: 300px; height: 300px; background: #333; border-radius: 50%; margin: 50px auto; position: relative; border: 4px solid #555; }
-        #stick { width: 80px; height: 80px; background: #ff9500; border-radius: 50%; position: absolute; top: 110px; left: 110px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
-        .btn { border: none; padding: 15px; font-size: 16px; border-radius: 10px; color: white; width: 80%; margin: 10px; font-weight: bold; }
-        #status { font-family: monospace; color: #0f0; margin: 10px; height: 20px; }
+        #joystick-container { width: 280px; height: 280px; background: #333; border-radius: 50%; margin: 50px auto; position: relative; border: 4px solid #555; }
+        #stick { width: 80px; height: 80px; background: #ff9500; border-radius: 50%; position: absolute; top: 100px; left: 100px; }
+        .btn { border: none; padding: 20px; font-size: 18px; border-radius: 12px; color: white; width: 85%; margin: 20px; font-weight: bold; }
+        #debug { font-size: 24px; font-family: monospace; color: #0f0; }
     </style>
 </head>
 <body>
-    <h3>ANON JOYSTICK v7.0</h3>
+    <h3>ANON JOYSTICK v8.1</h3>
     <button id="connect" class="btn" style="background:#ff9500">ANONに接続</button>
-    <div id="status">OFFLINE</div>
-
-    <div id="joystick-container">
-        <div id="stick"></div>
-    </div>
-
-    <div style="font-size: 24px; font-family: monospace;" id="debug">0, 0</div>
+    <div id="joystick-container"><div id="stick"></div></div>
+    <div id="debug">0, 0</div>
 
     <script>
         const SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
         const TX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
         let txChar = null;
-
         const container = document.getElementById('joystick-container');
         const stick = document.getElementById('stick');
-        const debug = document.getElementById('debug');
-        const status = document.getElementById('status');
+        let limit = 100;
 
-        let centerX, centerY, limit;
-        let lastX = 0, lastY = 0;
-
-        function updateStick(x, y) {
-            stick.style.transform = `translate(${x}px, ${y}px)`;
-            // -10 ～ 10 の範囲に正規化
-            let valY = Math.round((y / limit) * -10); // 上がプラス
-            let valX = Math.round((x / limit) * 10);
-            debug.innerText = `${valY}, ${valX}`;
-            send(valY, valX);
+        async function send(y, x) {
+            if (!txChar) return;
+            // 確実に「\n」を付けて送る
+            const data = new TextEncoder().encode(y + "," + x + "\n");
+            txChar.writeValueWithoutResponse(data).catch(()=>{});
         }
-
-        container.addEventListener('touchstart', e => {
-            const rect = container.getBoundingClientRect();
-            centerX = rect.left + rect.width / 2;
-            centerY = rect.top + rect.height / 2;
-            limit = rect.width / 2 - 40;
-        });
 
         container.addEventListener('touchmove', e => {
             e.preventDefault();
             const touch = e.touches[0];
-            let dx = touch.clientX - centerX;
-            let dy = touch.clientY - centerY;
+            const rect = container.getBoundingClientRect();
+            let dx = touch.clientX - (rect.left + rect.width / 2);
+            let dy = touch.clientY - (rect.top + rect.height / 2);
             const dist = Math.sqrt(dx*dx + dy*dy);
             if (dist > limit) { dx *= limit/dist; dy *= limit/dist; }
-            updateStick(dx, dy);
+            stick.style.transform = `translate(${dx}px, ${dy}px)`;
+            let valY = Math.round((dy / limit) * -10);
+            let valX = Math.round((dx / limit) * 10);
+            document.getElementById('debug').innerText = `${valY}, ${valX}`;
+            send(valY, valX);
         });
 
         container.addEventListener('touchend', () => {
-            updateStick(0, 0);
+            stick.style.transform = `translate(0, 0)`;
+            document.getElementById('debug').innerText = "0, 0";
+            send(0, 0);
         });
-
-        async function send(y, x) {
-            if (!txChar || (y === lastY && x === lastX)) return;
-            lastX = x; lastY = y;
-            try {
-                await txChar.writeValueWithoutResponse(new TextEncoder().encode(y + "," + x + "\n"));
-            } catch (e) { console.log(e); }
-        }
 
         document.getElementById('connect').onclick = async () => {
             try {
-                const d = await navigator.bluetooth.requestDevice({
+                const device = await navigator.bluetooth.requestDevice({
                     filters: [{ namePrefix: 'BBC micro:bit' }],
                     optionalServices: [SVC]
                 });
-                const s = await d.gatt.connect();
-                const sv = await s.getPrimaryService(SVC);
-                txChar = await sv.getCharacteristic(TX);
-                status.innerText = "ONLINE";
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(SVC);
+                txChar = await service.getCharacteristic(TX);
                 alert("ANON リンク完了！");
             } catch (e) { alert("Error: " + e); }
         };
