@@ -3,61 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ANON 1234 Web-Pad</title>
+    <title>ANON Stage 4.0</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: #fff; touch-action: none; overflow: hidden; }
-        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; width: 320px; margin: 40px auto; }
-        .btn { background: #444; border: 3px solid #666; border-radius: 20px; padding: 40px 0; font-size: 28px; color: white; font-weight: bold; -webkit-user-select: none; }
-        .btn:active { background: #ff9500; border-color: #fff; }
-        #connect { background: #ff9500; width: 90%; padding: 20px; border-radius: 15px; border: none; margin-top: 30px; font-size: 20px; font-weight: bold; color: white; }
-        #status { margin-top: 20px; color: #0f0; font-family: monospace; }
+        body { background: #1a1a1a; color: white; text-align: center; touch-action: none; font-family: sans-serif; }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; width: 300px; margin: 40px auto; }
+        .btn { background: #444; border: 2px solid #666; border-radius: 20px; padding: 40px 0; font-size: 30px; color: white; }
+        .btn:active { background: #ff9500; }
+        #connect { background: #ff9500; padding: 20px; width: 80%; border-radius: 10px; margin-top: 20px; font-weight: bold; }
     </style>
 </head>
 <body>
-    <button id="connect">ANON 0号機に接続</button>
-    <div id="status">OFFLINE</div>
-    
+    <button id="connect">CONNECT ANON</button>
     <div class="grid">
         <div></div><div class="btn" id="F">1</div><div></div>
         <div class="btn" id="L">3</div><div></div><div class="btn" id="R">4</div>
         <div></div><div class="btn" id="B">2</div><div></div>
     </div>
-
     <script>
-        const SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
         const TX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
         let txChar = null;
-
-        // シンプルに一文字 + 改行を送る
-        async function send(cmd) {
-            if (!txChar) return;
-            const data = new TextEncoder().encode(cmd + "\n");
-            // 応答を待たない高速送信モード
+        async function send(c) {
+            if(!txChar) return;
+            const data = new TextEncoder().encode(c + "\n");
             await txChar.writeValueWithoutResponse(data).catch(()=>{});
         }
-
-        const bind = (id, char) => {
+        const bind = (id, c) => {
             const el = document.getElementById(id);
-            // 押した時
-            el.addEventListener('touchstart', (e) => { e.preventDefault(); send(char); });
-            // 離した時（S = Stop）
+            el.addEventListener('touchstart', (e) => { e.preventDefault(); send(c); });
             el.addEventListener('touchend', (e) => { e.preventDefault(); send("S"); });
         };
-
-        bind("F", "F"); bind("B", "B"); bind("L", "L"); bind("R", "R");
-
+        bind("F","F"); bind("B","B"); bind("L","L"); bind("R","R");
         document.getElementById('connect').onclick = async () => {
-            try {
-                const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ namePrefix: 'BBC micro:bit' }],
-                    optionalServices: [SVC]
-                });
-                const server = await device.gatt.connect();
-                const service = await server.getPrimaryService(SVC);
-                txChar = await service.getCharacteristic(TX);
-                document.getElementById('status').innerText = "CONNECTED";
-                alert("ANON リンク成功！");
-            } catch (e) { alert("Error: " + e); }
+            const dev = await navigator.bluetooth.requestDevice({
+                filters: [{ namePrefix: 'BBC micro:bit' }],
+                optionalServices: ["6e400001-b5a3-f393-e0a9-e50e24dcca9e"]
+            });
+            const srv = await (await dev.gatt.connect()).getPrimaryService("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
+            txChar = await srv.getCharacteristic(TX);
+            alert("ANON リンク完了！");
         };
     </script>
 </body>
