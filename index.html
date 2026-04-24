@@ -3,25 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Ferme.Kawaii ANON Control v2.5</title>
+    <title>Ferme.Kawaii ANON v2.6</title>
     <style>
         body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; padding-top: 30px; overflow: hidden; }
         .btn { border: none; padding: 20px; font-size: 18px; border-radius: 15px; color: white; font-weight: bold; margin: 10px; cursor: pointer; width: 85%; transition: 0.3s; }
         #permissionBtn { background: #007aff; }
         #connectBtn { background: #ff9500; }
-        #status { margin-top: 15px; font-size: 16px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        #status { margin-top: 15px; font-size: 16px; color: #888; text-transform: uppercase; }
         #data-container { display: flex; justify-content: center; gap: 30px; margin-top: 40px; }
-        .val-box { background: #333; padding: 20px; border-radius: 15px; width: 100px; }
-        .label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; }
+        .val-box { background: #333; padding: 20px; border-radius: 15px; width: 110px; }
+        .label { display: block; font-size: 11px; color: #aaa; margin-bottom: 5px; }
         .value { font-size: 32px; font-weight: bold; font-family: monospace; }
         .info { margin-top: 40px; font-size: 13px; color: #666; line-height: 1.6; }
     </style>
 </head>
 <body>
-    <h2 style="color: #5cb85c;">ANON TILT SYSTEM v2.5</h2>
+    <h2 style="color: #5cb85c;">ANON TILT SYSTEM v2.6</h2>
     
-    <button id="permissionBtn" class="btn">1. センサー使用を許可する</button>
-    <button id="connectBtn" class="btn">2. ANONに接続する</button>
+    <button id="permissionBtn" class="btn">1. センサー許可</button>
+    <button id="connectBtn" class="btn">2. ANON接続</button>
     
     <div id="status">Disconnected</div>
     
@@ -37,9 +37,9 @@
     </div>
 
     <div class="info">
-        <b>Control Logic:</b><br>
-        45° Tilt = 100% Power (Cap: ±100)<br>
-        Deadzone: < ±10 | Failsafe: Active
+        <b>Fine Tuning:</b><br>
+        Pitch: 30° = val 10 (Deadzone: ±2°)<br>
+        Roll: 20° = val 10 (Deadzone: ±3°)
     </div>
 
     <script>
@@ -48,14 +48,12 @@
         let txChar = null;
         let lastSendTime = 0;
 
-        // 1. iOS センサー許可
         if (typeof DeviceOrientationEvent.requestPermission === 'function') {
             document.getElementById('permissionBtn').style.display = 'inline-block';
             document.getElementById('permissionBtn').addEventListener('click', () => {
                 DeviceOrientationEvent.requestPermission().then(res => {
                     if (res === 'granted') {
                         document.getElementById('permissionBtn').style.opacity = '0.3';
-                        document.getElementById('permissionBtn').innerText = '許可済み';
                         startOrientation();
                     }
                 }).catch(e => alert(e));
@@ -65,15 +63,28 @@
             startOrientation();
         }
 
-        // 2. 角度取得 & スケーリング
         function startOrientation() {
             window.addEventListener('deviceorientation', (event) => {
-                let pRaw = event.beta || 0;
-                let rRaw = event.gamma || 0;
+                let pAngle = event.beta || 0;
+                let rAngle = event.gamma || 0;
                 
-                // 45度を100に変換
-                let pitch = Math.max(-100, Math.min(100, Math.round(pRaw * (100 / 45))));
-                let roll = Math.max(-100, Math.min(100, Math.round(rRaw * (100 / 45))));
+                // --- 感度設定 & デッドゾーン適用 ---
+                let pitch = 0;
+                let roll = 0;
+
+                // 前後：30°で10 (Deadzone ±2°)
+                if (Math.abs(pAngle) > 2) {
+                    pitch = Math.round(pAngle * (10 / 30));
+                }
+                
+                // 左右：20°で10 (Deadzone ±3°)
+                if (Math.abs(rAngle) > 3) {
+                    roll = Math.round(rAngle * (10 / 20));
+                }
+
+                // Cap (安全のため、極端な傾きでも±20程度に制限)
+                pitch = Math.max(-20, Math.min(20, pitch));
+                roll = Math.max(-20, Math.min(20, roll));
 
                 document.getElementById('pitch').innerText = pitch;
                 document.getElementById('roll').innerText = roll;
@@ -89,10 +100,8 @@
             });
         }
 
-        // 3. Bluetooth 接続
         document.getElementById('connectBtn').addEventListener('click', async () => {
             try {
-                document.getElementById('status').innerText = "Pairing...";
                 const device = await navigator.bluetooth.requestDevice({
                     filters: [{ namePrefix: 'BBC micro:bit' }],
                     optionalServices: [UART_SERVICE_UUID]
@@ -105,11 +114,8 @@
                 device.addEventListener('gattserverdisconnected', () => {
                     txChar = null;
                     document.getElementById('status').innerText = "DISCONNECTED";
-                    document.getElementById('status').style.color = "#ff3b30";
                 });
-            } catch (error) {
-                alert(error);
-            }
+            } catch (error) { alert(error); }
         });
     </script>
 </body>
