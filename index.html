@@ -5,15 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Ferme.Kawaii ANON Control</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #222; color: white; padding-top: 50px; overflow: hidden; }
-        #connectBtn { background: #f0ad4e; border: none; padding: 20px 40px; font-size: 20px; border-radius: 50px; color: white; font-weight: bold; }
-        #status { margin-top: 20px; font-size: 18px; color: #aaa; }
-        #data { font-size: 40px; margin-top: 50px; font-weight: bold; }
+        body { font-family: sans-serif; text-align: center; background: #222; color: white; padding-top: 30px; overflow: hidden; }
+        .btn { border: none; padding: 15px 30px; font-size: 18px; border-radius: 50px; color: white; font-weight: bold; margin: 10px; cursor: pointer; width: 80%; }
+        #connectBtn { background: #f0ad4e; }
+        #permissionBtn { background: #5bc0de; display: none; } /* iOS用許可ボタン */
+        #status { margin-top: 15px; font-size: 16px; color: #aaa; }
+        #data { font-size: 35px; margin-top: 30px; font-weight: bold; font-family: monospace; }
     </style>
 </head>
 <body>
-    <h1>ANON TILT CONTROL</h1>
-    <button id="connectBtn">ANONに接続する</button>
+    <h1>ANON TILT v2.0</h1>
+    
+    <button id="permissionBtn" class="btn">1. センサーを許可する</button>
+    
+    <button id="connectBtn" class="btn">2. ANONに接続する</button>
+    
     <div id="status">Disconnected</div>
     <div id="data">
         P: <span id="pitch">0</span><br>
@@ -27,6 +33,48 @@
         let txChar = null;
         let lastSendTime = 0;
 
+        // iOS 13+ のためのセンサー許可リクエスト
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            document.getElementById('permissionBtn').style.display = 'inline-block';
+            document.getElementById('permissionBtn').addEventListener('click', () => {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response === 'granted') {
+                            document.getElementById('permissionBtn').style.display = 'none';
+                            startOrientation();
+                        }
+                    })
+                    .catch(console.error);
+            });
+        } else {
+            startOrientation();
+        }
+
+        function startOrientation() {
+            window.addEventListener('deviceorientation', (event) => {
+                if (!txChar) {
+                    // 接続前でも数字が動くか確認用
+                    document.getElementById('pitch').innerText = Math.round(event.beta || 0);
+                    document.getElementById('roll').innerText = Math.round(event.gamma || 0);
+                    return;
+                }
+
+                let pitch = Math.round(event.beta || 0);
+                let roll = Math.round(event.gamma || 0);
+
+                document.getElementById('pitch').innerText = pitch;
+                document.getElementById('roll').innerText = roll;
+
+                const now = Date.now();
+                if (now - lastSendTime > 100) {
+                    const data = pitch + "," + roll + "\n";
+                    const encoder = new TextEncoder();
+                    txChar.writeValue(encoder.encode(data));
+                    lastSendTime = now;
+                }
+            });
+        }
+
         document.getElementById('connectBtn').addEventListener('click', async () => {
             try {
                 const device = await navigator.bluetooth.requestDevice({
@@ -39,25 +87,7 @@
                 document.getElementById('status').innerText = "CONNECTED";
                 document.getElementById('status').style.color = "#5cb85c";
             } catch (error) {
-                alert(error);
-            }
-        });
-
-        window.addEventListener('deviceorientation', (event) => {
-            if (!txChar) return;
-
-            let pitch = event.beta; // 前後
-            let roll = event.gamma; // 左右
-
-            document.getElementById('pitch').innerText = Math.round(pitch);
-            document.getElementById('roll').innerText = Math.round(roll);
-
-            const now = Date.now();
-            if (now - lastSendTime > 100) {
-                const data = Math.round(pitch) + "," + Math.round(roll) + "\n";
-                const encoder = new TextEncoder();
-                txChar.writeValue(encoder.encode(data));
-                lastSendTime = now;
+                alert("接続エラー: " + error);
             }
         });
     </script>
