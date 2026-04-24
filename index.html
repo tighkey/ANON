@@ -1,47 +1,347 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ANON Stage 4.0</title>
-    <style>
-        body { background: #1a1a1a; color: white; text-align: center; touch-action: none; font-family: sans-serif; }
-        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; width: 300px; margin: 40px auto; }
-        .btn { background: #444; border: 2px solid #666; border-radius: 20px; padding: 40px 0; font-size: 30px; color: white; }
-        .btn:active { background: #ff9500; }
-        #connect { background: #ff9500; padding: 20px; width: 80%; border-radius: 10px; margin-top: 20px; font-weight: bold; }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>ANON 00</title>
+  <style>
+    :root {
+      --bg: #101418;
+      --card: #1b222a;
+      --text: #f4f7fb;
+      --muted: #9aa7b3;
+      --accent: #73d13d;
+      --danger: #ff4d4f;
+      --warn: #faad14;
+      --line: #2e3843;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 18px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .app {
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    .header {
+      margin-bottom: 18px;
+    }
+
+    .title {
+      font-size: 34px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+
+    .version {
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    .status {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 14px;
+      font-size: 15px;
+    }
+
+    .status strong {
+      color: var(--accent);
+    }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 18px;
+      padding: 18px;
+      font-size: 20px;
+      font-weight: 700;
+      color: #061006;
+      background: var(--accent);
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #69c0ff;
+      color: #03111c;
+    }
+
+    button.stop {
+      background: var(--danger);
+      color: white;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .box {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      min-height: 120px;
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 15px;
+      margin-bottom: 12px;
+    }
+
+    .value {
+      font-size: 44px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 10px;
+    }
+
+    .footer {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 16px;
+      line-height: 1.5;
+    }
+  </style>
 </head>
 <body>
-    <button id="connect">CONNECT ANON</button>
-    <div class="grid">
-        <div></div><div class="btn" id="F">1</div><div></div>
-        <div class="btn" id="L">3</div><div></div><div class="btn" id="R">4</div>
-        <div></div><div class="btn" id="B">2</div><div></div>
-    </div>
-    <script>
-        const TX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-        let txChar = null;
-        async function send(c) {
-            if(!txChar) return;
-            const data = new TextEncoder().encode(c + "\n");
-            await txChar.writeValueWithoutResponse(data).catch(()=>{});
+  <main class="app">
+    <section class="header">
+      <div class="title">ANON 00</div>
+      <div class="version">Version 0.1.0 / Web BLE Tilt Controller</div>
+    </section>
+
+    <section class="status" id="status">
+      Status: <strong>待機中</strong>
+    </section>
+
+    <section class="buttons">
+      <button onclick="startSensor()">センサON</button>
+      <button class="secondary" onclick="connectAnon()">ANON接続</button>
+      <button class="stop" onclick="emergencyStop()">STOP</button>
+    </section>
+
+    <section class="grid">
+      <div class="box">
+        <div class="label">前スロットル</div>
+        <div class="value" id="forwardValue">0</div>
+        <div class="small">前傾 / 最大10</div>
+      </div>
+
+      <div class="box">
+        <div class="label">後スロットル</div>
+        <div class="value" id="backwardValue">0</div>
+        <div class="small">後傾 / 最大10</div>
+      </div>
+
+      <div class="box">
+        <div class="label">左スロットル</div>
+        <div class="value" id="leftValue">0</div>
+        <div class="small">左傾 / 最大5</div>
+      </div>
+
+      <div class="box">
+        <div class="label">右スロットル</div>
+        <div class="value" id="rightValue">0</div>
+        <div class="small">右傾 / 最大5</div>
+      </div>
+    </section>
+
+    <section class="footer">
+      送信形式: x,y\n<br>
+      x = 左右差動スコア（-5〜5） / y = 前後スロットル（-10〜10）<br>
+      Bluetooth切断時は自動停止信号を送信します。
+    </section>
+  </main>
+
+  <script>
+    const APP_NAME = "ANON 00";
+    const VERSION = "0.1.0";
+
+    // micro:bit UART Service UUID
+    const UART_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+    const UART_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // Web app -> micro:bit
+
+    let bleDevice = null;
+    let rxChar = null;
+    let sensorActive = false;
+    let lastSendTime = 0;
+
+    let forward = 0;
+    let backward = 0;
+    let left = 0;
+    let right = 0;
+
+    function setStatus(message, mode = "normal") {
+      const color = mode === "danger" ? "#ff4d4f" : mode === "warn" ? "#faad14" : "#73d13d";
+      document.getElementById("status").innerHTML = `Status: <strong style="color:${color}">${message}</strong>`;
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function applyDeadZone(value, deadZone) {
+      return Math.abs(value) <= deadZone ? 0 : value;
+    }
+
+    function scoreFromAngle(angle, maxAngle, maxScore, deadZone) {
+      const limited = clamp(angle, -maxAngle, maxAngle);
+      let score = Math.round((limited / maxAngle) * maxScore);
+      score = applyDeadZone(score, deadZone);
+      return clamp(score, -maxScore, maxScore);
+    }
+
+    function updateDisplay() {
+      document.getElementById("forwardValue").textContent = forward;
+      document.getElementById("backwardValue").textContent = backward;
+      document.getElementById("leftValue").textContent = left;
+      document.getElementById("rightValue").textContent = right;
+    }
+
+    async function connectAnon() {
+      if (!navigator.bluetooth) {
+        setStatus("このブラウザはWeb Bluetooth非対応です", "danger");
+        return;
+      }
+
+      try {
+        setStatus("ANON探索中...", "warn");
+
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [UART_SERVICE] }]
+        });
+
+        bleDevice.addEventListener("gattserverdisconnected", onDisconnected);
+
+        const server = await bleDevice.gatt.connect();
+        const service = await server.getPrimaryService(UART_SERVICE);
+        rxChar = await service.getCharacteristic(UART_RX);
+
+        setStatus("ANON接続完了");
+        await sendThrottle(0, 0);
+      } catch (error) {
+        setStatus("接続失敗: " + error.message, "danger");
+      }
+    }
+
+    async function startSensor() {
+      // iOS対策。Android Chromeでは通常不要だが、あっても問題なし。
+      if (typeof DeviceOrientationEvent !== "undefined" &&
+          typeof DeviceOrientationEvent.requestPermission === "function") {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        if (permission !== "granted") {
+          setStatus("センサ許可が必要です", "danger");
+          return;
         }
-        const bind = (id, c) => {
-            const el = document.getElementById(id);
-            el.addEventListener('touchstart', (e) => { e.preventDefault(); send(c); });
-            el.addEventListener('touchend', (e) => { e.preventDefault(); send("S"); });
-        };
-        bind("F","F"); bind("B","B"); bind("L","L"); bind("R","R");
-        document.getElementById('connect').onclick = async () => {
-            const dev = await navigator.bluetooth.requestDevice({
-                filters: [{ namePrefix: 'BBC micro:bit' }],
-                optionalServices: ["6e400001-b5a3-f393-e0a9-e50e24dcca9e"]
-            });
-            const srv = await (await dev.gatt.connect()).getPrimaryService("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
-            txChar = await srv.getCharacteristic(TX);
-            alert("ANON リンク完了！");
-        };
-    </script>
+      }
+
+      if (sensorActive) {
+        setStatus("センサはすでにONです");
+        return;
+      }
+
+      sensorActive = true;
+      window.addEventListener("deviceorientation", handleOrientation);
+      setStatus("センサON");
+    }
+
+    function handleOrientation(event) {
+      // beta: 前後傾き roughly -180〜180
+      // gamma: 左右傾き roughly -90〜90
+      const beta = event.beta || 0;
+      const gamma = event.gamma || 0;
+
+      // 前後：30°で最大10。前傾をプラスにするため beta をそのまま使用。
+      const fbScore = scoreFromAngle(beta, 30, 10, 2);
+
+      // 左右：20°で最大5。gammaが右傾きプラスの端末が多い。
+      const lrScore = scoreFromAngle(gamma, 20, 5, 2);
+
+      forward = fbScore > 0 ? fbScore : 0;
+      backward = fbScore < 0 ? Math.abs(fbScore) : 0;
+      right = lrScore > 0 ? lrScore : 0;
+      left = lrScore < 0 ? Math.abs(lrScore) : 0;
+
+      updateDisplay();
+
+      // micro:bitへは x,y で送る。
+      // x: 左右差動 -5〜5 / y: 前後 -10〜10
+      const x = lrScore;
+      const y = fbScore;
+
+      const now = Date.now();
+      if (now - lastSendTime >= 100) {
+        sendThrottle(x, y);
+        lastSendTime = now;
+      }
+    }
+
+    async function sendThrottle(x, y) {
+      if (!rxChar) return;
+
+      try {
+        const message = `${x},${y}\n`;
+        const data = new TextEncoder().encode(message);
+        await rxChar.writeValue(data);
+      } catch (error) {
+        setStatus("送信失敗。停止します", "danger");
+        await safeStopLocalOnly();
+      }
+    }
+
+    async function emergencyStop() {
+      forward = 0;
+      backward = 0;
+      left = 0;
+      right = 0;
+      updateDisplay();
+      await sendThrottle(0, 0);
+      setStatus("停止信号送信");
+    }
+
+    async function safeStopLocalOnly() {
+      forward = 0;
+      backward = 0;
+      left = 0;
+      right = 0;
+      updateDisplay();
+    }
+
+    async function onDisconnected() {
+      // フェイルセーフ：切断検知時は画面上の値をゼロ化。
+      // BLE切断後は送信できないため、micro:bit側にも切断時停止処理を必ず入れる。
+      rxChar = null;
+      await safeStopLocalOnly();
+      setStatus("Bluetooth切断。停止", "danger");
+    }
+
+    updateDisplay();
+  </script>
 </body>
 </html>
