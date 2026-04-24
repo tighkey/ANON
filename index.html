@@ -3,66 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ANON v6.0 DIAGNOSTIC</title>
+    <title>ANON JOYSTICK</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #111; color: #fff; padding-top: 10px; }
-        .btn { border: none; padding: 20px; font-size: 18px; border-radius: 12px; color: white; width: 90%; margin: 8px; font-weight: bold; }
-        .log-box { font-size: 12px; background: #000; color: #0f0; text-align: left; height: 120px; overflow: scroll; margin: 10px; padding: 10px; border: 1px solid #333; }
+        body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: #fff; touch-action: none; overflow: hidden; margin: 0; }
+        #joystick-container { width: 300px; height: 300px; background: #333; border-radius: 50%; margin: 50px auto; position: relative; border: 4px solid #555; }
+        #stick { width: 80px; height: 80px; background: #ff9500; border-radius: 50%; position: absolute; top: 110px; left: 110px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        .btn { border: none; padding: 15px; font-size: 16px; border-radius: 10px; color: white; width: 80%; margin: 10px; font-weight: bold; }
+        #status { font-family: monospace; color: #0f0; margin: 10px; height: 20px; }
     </style>
 </head>
 <body>
-    <h3>ANON v6.0 DIAGNOSTIC</h3>
-    <button onclick="DeviceOrientationEvent.requestPermission()" class="btn" style="background:#007aff">1. センサー有効化</button>
-    <button id="connect" class="btn" style="background:#ff9500">2. ANONに接続</button>
-    
-    <div style="font-size: 24px; margin: 15px;">P: <span id="pitch">0</span> | R: <span id="roll">0</span></div>
-    <div id="log" class="log-box">> System Ready<br></div>
+    <h3>ANON JOYSTICK v7.0</h3>
+    <button id="connect" class="btn" style="background:#ff9500">ANONに接続</button>
+    <div id="status">OFFLINE</div>
+
+    <div id="joystick-container">
+        <div id="stick"></div>
+    </div>
+
+    <div style="font-size: 24px; font-family: monospace;" id="debug">0, 0</div>
 
     <script>
         const SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
         const TX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
         let txChar = null;
 
-        function logger(m) { 
-            const l = document.getElementById('log');
-            l.innerHTML += "> " + m + "<br>";
-            l.scrollTop = l.scrollHeight;
+        const container = document.getElementById('joystick-container');
+        const stick = document.getElementById('stick');
+        const debug = document.getElementById('debug');
+        const status = document.getElementById('status');
+
+        let centerX, centerY, limit;
+        let lastX = 0, lastY = 0;
+
+        function updateStick(x, y) {
+            stick.style.transform = `translate(${x}px, ${y}px)`;
+            // -10 ～ 10 の範囲に正規化
+            let valY = Math.round((y / limit) * -10); // 上がプラス
+            let valX = Math.round((x / limit) * 10);
+            debug.innerText = `${valY}, ${valX}`;
+            send(valY, valX);
         }
 
-        window.addEventListener('deviceorientation', (e) => {
-            let p = Math.max(-10, Math.min(10, Math.round((e.beta||0)*(10/30))));
-            let r = Math.max(-10, Math.min(10, Math.round((e.gamma||0)*(10/20))));
-            document.getElementById('pitch').innerText = p;
-            document.getElementById('roll').innerText = r;
-
-            if (txChar && (p !== 0 || r !== 0)) {
-                const data = new TextEncoder().encode(p + "," + r + "\n");
-                txChar.writeValueWithoutResponse(data)
-                    .then(() => { /* 送信成功 */ })
-                    .catch(err => logger("Send Error: " + err));
-            }
+        container.addEventListener('touchstart', e => {
+            const rect = container.getBoundingClientRect();
+            centerX = rect.left + rect.width / 2;
+            centerY = rect.top + rect.height / 2;
+            limit = rect.width / 2 - 40;
         });
+
+        container.addEventListener('touchmove', e => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            let dx = touch.clientX - centerX;
+            let dy = touch.clientY - centerY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist > limit) { dx *= limit/dist; dy *= limit/dist; }
+            updateStick(dx, dy);
+        });
+
+        container.addEventListener('touchend', () => {
+            updateStick(0, 0);
+        });
+
+        async function send(y, x) {
+            if (!txChar || (y === lastY && x === lastX)) return;
+            lastX = x; lastY = y;
+            try {
+                await txChar.writeValueWithoutResponse(new TextEncoder().encode(y + "," + x + "\n"));
+            } catch (e) { console.log(e); }
+        }
 
         document.getElementById('connect').onclick = async () => {
             try {
-                logger("Searching for micro:bit...");
-                const device = await navigator.bluetooth.requestDevice({
+                const d = await navigator.bluetooth.requestDevice({
                     filters: [{ namePrefix: 'BBC micro:bit' }],
                     optionalServices: [SVC]
                 });
-                logger("Connecting to device...");
-                const server = await device.gatt.connect();
-                logger("Searching UART Service...");
-                const service = await server.getPrimaryService(SVC);
-                logger("Finding TX Channel...");
-                txChar = await service.getCharacteristic(TX);
-                
-                logger("【LINK SUCCESS】Ready to roll!");
+                const s = await d.gatt.connect();
+                const sv = await s.getPrimaryService(SVC);
+                txChar = await sv.getCharacteristic(TX);
+                status.innerText = "ONLINE";
                 alert("ANON リンク完了！");
-            } catch (e) { 
-                logger("Error: " + e);
-                alert("Connection Failed: " + e);
-            }
+            } catch (e) { alert("Error: " + e); }
         };
     </script>
 </body>
