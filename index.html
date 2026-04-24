@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ferme.Kawaii ANON Control</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #222; color: white; padding-top: 50px; overflow: hidden; }
+        #connectBtn { background: #f0ad4e; border: none; padding: 20px 40px; font-size: 20px; border-radius: 50px; color: white; font-weight: bold; }
+        #status { margin-top: 20px; font-size: 18px; color: #aaa; }
+        #data { font-size: 40px; margin-top: 50px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>ANON TILT CONTROL</h1>
+    <button id="connectBtn">ANONに接続する</button>
+    <div id="status">Disconnected</div>
+    <div id="data">
+        P: <span id="pitch">0</span><br>
+        R: <span id="roll">0</span>
+    </div>
+
+    <script>
+        const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+        const UART_TX_CHARACTERISTIC_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+        
+        let txChar = null;
+        let lastSendTime = 0;
+
+        document.getElementById('connectBtn').addEventListener('click', async () => {
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: 'BBC micro:bit' }],
+                    optionalServices: [UART_SERVICE_UUID]
+                });
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(UART_SERVICE_UUID);
+                txChar = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
+                document.getElementById('status').innerText = "CONNECTED";
+                document.getElementById('status').style.color = "#5cb85c";
+            } catch (error) {
+                alert(error);
+            }
+        });
+
+        window.addEventListener('deviceorientation', (event) => {
+            if (!txChar) return;
+
+            let pitch = event.beta; // 前後
+            let roll = event.gamma; // 左右
+
+            document.getElementById('pitch').innerText = Math.round(pitch);
+            document.getElementById('roll').innerText = Math.round(roll);
+
+            const now = Date.now();
+            if (now - lastSendTime > 100) {
+                const data = Math.round(pitch) + "," + Math.round(roll) + "\n";
+                const encoder = new TextEncoder();
+                txChar.writeValue(encoder.encode(data));
+                lastSendTime = now;
+            }
+        });
+    </script>
+</body>
+</html>
