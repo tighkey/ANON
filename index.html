@@ -3,25 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Ferme.Kawaii ANON Control v2.1</title>
+    <title>Ferme.Kawaii ANON Control v2.5</title>
     <style>
         body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; padding-top: 30px; overflow: hidden; }
         .btn { border: none; padding: 20px; font-size: 18px; border-radius: 15px; color: white; font-weight: bold; margin: 10px; cursor: pointer; width: 85%; transition: 0.3s; }
-        #permissionBtn { background: #007aff; } /* iOS Blue */
-        #connectBtn { background: #ff9500; }    /* Safety Orange */
+        #permissionBtn { background: #007aff; }
+        #connectBtn { background: #ff9500; }
         #status { margin-top: 15px; font-size: 16px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
         #data-container { display: flex; justify-content: center; gap: 30px; margin-top: 40px; }
         .val-box { background: #333; padding: 20px; border-radius: 15px; width: 100px; }
         .label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; }
         .value { font-size: 32px; font-weight: bold; font-family: monospace; }
-        .info { margin-top: 40px; font-size: 12px; color: #555; padding: 0 20px; }
+        .info { margin-top: 40px; font-size: 13px; color: #666; line-height: 1.6; }
     </style>
 </head>
 <body>
-    <h2 style="color: #5cb85c;">ANON TILT SYSTEM</h2>
+    <h2 style="color: #5cb85c;">ANON TILT SYSTEM v2.5</h2>
     
     <button id="permissionBtn" class="btn">1. センサー使用を許可する</button>
-    
     <button id="connectBtn" class="btn">2. ANONに接続する</button>
     
     <div id="status">Disconnected</div>
@@ -38,68 +37,59 @@
     </div>
 
     <div class="info">
-        Cap: ±100 | Deadzone: micro:bit側で処理<br>
-        Failsafe: 切断時に自動停止
+        <b>Control Logic:</b><br>
+        45° Tilt = 100% Power (Cap: ±100)<br>
+        Deadzone: < ±10 | Failsafe: Active
     </div>
 
     <script>
         const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
         const UART_TX_CHARACTERISTIC_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-        
         let txChar = null;
         let lastSendTime = 0;
 
-        // --- 1. iOS センサー許可ロジック ---
+        // 1. iOS センサー許可
         if (typeof DeviceOrientationEvent.requestPermission === 'function') {
             document.getElementById('permissionBtn').style.display = 'inline-block';
             document.getElementById('permissionBtn').addEventListener('click', () => {
-                DeviceOrientationEvent.requestPermission()
-                    .then(response => {
-                        if (response === 'granted') {
-                            document.getElementById('permissionBtn').style.opacity = '0.3';
-                            document.getElementById('permissionBtn').innerText = '許可済み';
-                            startOrientation();
-                        }
-                    })
-                    .catch(e => alert("Permission Error: " + e));
+                DeviceOrientationEvent.requestPermission().then(res => {
+                    if (res === 'granted') {
+                        document.getElementById('permissionBtn').style.opacity = '0.3';
+                        document.getElementById('permissionBtn').innerText = '許可済み';
+                        startOrientation();
+                    }
+                }).catch(e => alert(e));
             });
         } else {
-            // Androidや非iOS用
             document.getElementById('permissionBtn').style.display = 'none';
             startOrientation();
         }
 
-        // --- 2. 傾き取得 & データ送信ロジック ---
+        // 2. 角度取得 & スケーリング
         function startOrientation() {
             window.addEventListener('deviceorientation', (event) => {
-                // 【Cap処理】±100の範囲に制限
-                let pRaw = Math.round(event.beta || 0);
-                let rRaw = Math.round(event.gamma || 0);
+                let pRaw = event.beta || 0;
+                let rRaw = event.gamma || 0;
                 
-                let pitch = Math.max(-100, Math.min(100, pRaw));
-                let roll = Math.max(-100, Math.min(100, rRaw));
+                // 45度を100に変換
+                let pitch = Math.max(-100, Math.min(100, Math.round(pRaw * (100 / 45))));
+                let roll = Math.max(-100, Math.min(100, Math.round(rRaw * (100 / 45))));
 
-                // UI表示の更新
                 document.getElementById('pitch').innerText = pitch;
                 document.getElementById('roll').innerText = roll;
 
-                // 接続済みの場合のみ送信
                 if (txChar) {
                     const now = Date.now();
-                    // 通信負荷軽減のため 100ms 間隔で送信
                     if (now - lastSendTime > 100) {
                         const data = pitch + "," + roll + "\n";
-                        const encoder = new TextEncoder();
-                        txChar.writeValue(encoder.encode(data)).catch(e => {
-                            console.log("Send Error: " + e);
-                        });
+                        txChar.writeValue(new TextEncoder().encode(data)).catch(e => console.log(e));
                         lastSendTime = now;
                     }
                 }
             });
         }
 
-        // --- 3. Bluetooth 接続ロジック ---
+        // 3. Bluetooth 接続
         document.getElementById('connectBtn').addEventListener('click', async () => {
             try {
                 document.getElementById('status').innerText = "Pairing...";
@@ -107,26 +97,18 @@
                     filters: [{ namePrefix: 'BBC micro:bit' }],
                     optionalServices: [UART_SERVICE_UUID]
                 });
-                
                 const server = await device.gatt.connect();
                 const service = await server.getPrimaryService(UART_SERVICE_UUID);
                 txChar = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
-                
                 document.getElementById('status').innerText = "CONNECTED";
                 document.getElementById('status').style.color = "#5cb85c";
-                document.getElementById('connectBtn').style.opacity = '0.3';
-
-                // Failsafe: 切断を検知したら状態をリセット
                 device.addEventListener('gattserverdisconnected', () => {
                     txChar = null;
-                    document.getElementById('status').innerText = "DISCONNECTED (Failsafe)";
+                    document.getElementById('status').innerText = "DISCONNECTED";
                     document.getElementById('status').style.color = "#ff3b30";
-                    document.getElementById('connectBtn').style.opacity = '1';
                 });
-
             } catch (error) {
-                document.getElementById('status').innerText = "Error";
-                alert("Bluetooth接続失敗: " + error);
+                alert(error);
             }
         });
     </script>
