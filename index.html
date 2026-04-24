@@ -3,23 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ANON Control v3.0</title>
+    <title>ANON v3.1 DEBUG</title>
     <style>
-        body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; padding-top: 30px; }
+        body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; padding-top: 20px; }
         .btn { border: none; padding: 20px; font-size: 18px; border-radius: 15px; color: white; font-weight: bold; margin: 10px; width: 85%; }
         #permissionBtn { background: #007aff; }
         #connectBtn { background: #ff9500; }
-        #status { margin-top: 15px; font-size: 16px; color: #888; }
-        .val-box { background: #333; padding: 20px; border-radius: 15px; width: 110px; display: inline-block; margin: 10px; }
-        #txLight { width: 20px; height: 20px; background: #555; border-radius: 50%; display: inline-block; margin-top: 20px; }
+        .status-box { font-size: 14px; margin: 10px; padding: 10px; background: #333; border-radius: 10px; color: #aaa; }
+        .val-box { background: #444; padding: 20px; border-radius: 15px; width: 110px; display: inline-block; margin: 10px; }
+        .indicator { width: 30px; height: 30px; background: #555; border-radius: 50%; display: inline-block; margin: 10px; border: 2px solid #000; }
+        #sensorInd { background: #555; } /* センサー状態 */
+        #btInd { background: #555; }     /* 送信状態 */
     </style>
 </head>
 <body>
-    <h2>ANON TILT v3.0</h2>
+    <h2>ANON DEBUG v3.1</h2>
+    
     <button id="permissionBtn" class="btn">1. センサー許可</button>
-    <button id="connectBtn" class="btn">2. ANON接続</button>
-    <div id="status">Disconnected</div>
-    <div id="txLight" id="indicator"></div><br>
+    <div id="status-sensor" class="status-box">センサー：未許可</div>
+    
+    <button id="connectBtn" class="btn">2. ANONに接続</button>
+    <div id="status-bt" class="status-box">Bluetooth：未接続</div>
+
+    <div>
+        <div id="sensorInd" class="indicator"></div>
+        <div id="btInd" class="indicator"></div>
+    </div>
+
     <div class="val-box">P: <span id="pitch">0</span></div>
     <div class="val-box">R: <span id="roll">0</span></div>
 
@@ -28,39 +38,60 @@
         const UART_TX_CHARACTERISTIC_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
         let txChar = null;
 
+        // --- 1. センサー処理 ---
         function startOrientation() {
+            document.getElementById('status-sensor').innerText = "センサー：動作中";
+            document.getElementById('sensorInd').style.background = "#007aff"; // センサー起動で青
+
             window.addEventListener('deviceorientation', (event) => {
                 let p = Math.round((event.beta || 0) * (10 / 30));
                 let r = Math.round((event.gamma || 0) * (10 / 20));
                 p = Math.max(-10, Math.min(10, p));
                 r = Math.max(-10, Math.min(10, r));
+
                 document.getElementById('pitch').innerText = p;
                 document.getElementById('roll').innerText = r;
 
+                // 送信処理
                 if (txChar) {
                     const data = p + "," + r + "\n";
                     txChar.writeValue(new TextEncoder().encode(data))
                         .then(() => {
-                            document.getElementById('txLight').style.background = "#5cb85c"; // 送信成功で緑
-                            setTimeout(() => document.getElementById('txLight').style.background = "#555", 50);
+                            document.getElementById('btInd').style.background = "#5cb85c"; // 送信成功で緑
+                            setTimeout(() => document.getElementById('btInd').style.background = "#555", 50);
                         }).catch(e => console.log(e));
                 }
             });
         }
 
         document.getElementById('permissionBtn').addEventListener('click', () => {
-            DeviceOrientationEvent.requestPermission().then(res => { if(res === 'granted') startOrientation(); });
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(res => {
+                        if (res === 'granted') startOrientation();
+                        else alert("許可されませんでした");
+                    }).catch(e => alert("エラー: " + e));
+            } else {
+                startOrientation();
+            }
         });
 
+        // --- 2. Bluetooth処理 ---
         document.getElementById('connectBtn').addEventListener('click', async () => {
-            const device = await navigator.bluetooth.requestDevice({
-                filters: [{ namePrefix: 'BBC micro:bit' }],
-                optionalServices: [UART_SERVICE_UUID]
-            });
-            const server = await device.gatt.connect();
-            const service = await server.getPrimaryService(UART_SERVICE_UUID);
-            txChar = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
-            document.getElementById('status').innerText = "CONNECTED";
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: 'BBC micro:bit' }],
+                    optionalServices: [UART_SERVICE_UUID]
+                });
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(UART_SERVICE_UUID);
+                txChar = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
+                
+                document.getElementById('status-bt').innerText = "Bluetooth：接続済み";
+                document.getElementById('btInd').style.background = "#ff9500"; // 接続でオレンジ
+            } catch (error) {
+                alert("接続エラー: " + error);
+            }
         });
     </script>
 </body>
