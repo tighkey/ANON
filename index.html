@@ -3,103 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ANON Control v2.7</title>
+    <title>ANON Control v3.0</title>
     <style>
-        body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; padding-top: 30px; overflow: hidden; }
-        .btn { border: none; padding: 20px; font-size: 18px; border-radius: 15px; color: white; font-weight: bold; margin: 10px; cursor: pointer; width: 85%; transition: 0.3s; }
+        body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; padding-top: 30px; }
+        .btn { border: none; padding: 20px; font-size: 18px; border-radius: 15px; color: white; font-weight: bold; margin: 10px; width: 85%; }
         #permissionBtn { background: #007aff; }
         #connectBtn { background: #ff9500; }
-        #status { margin-top: 15px; font-size: 16px; color: #888; text-transform: uppercase; }
-        #data-container { display: flex; justify-content: center; gap: 30px; margin-top: 40px; }
-        .val-box { background: #333; padding: 20px; border-radius: 15px; width: 110px; }
-        .label { display: block; font-size: 11px; color: #aaa; margin-bottom: 5px; }
-        .value { font-size: 32px; font-weight: bold; font-family: monospace; }
+        #status { margin-top: 15px; font-size: 16px; color: #888; }
+        .val-box { background: #333; padding: 20px; border-radius: 15px; width: 110px; display: inline-block; margin: 10px; }
+        #txLight { width: 20px; height: 20px; background: #555; border-radius: 50%; display: inline-block; margin-top: 20px; }
     </style>
 </head>
 <body>
-    <h2 style="color: #5cb85c;">ANON TILT v2.7</h2>
-    
+    <h2>ANON TILT v3.0</h2>
     <button id="permissionBtn" class="btn">1. センサー許可</button>
     <button id="connectBtn" class="btn">2. ANON接続</button>
-    
     <div id="status">Disconnected</div>
-    
-    <div id="data-container">
-        <div class="val-box">
-            <span class="label">PITCH (前後)</span>
-            <span id="pitch" class="value">0</span>
-        </div>
-        <div class="val-box">
-            <span class="label">ROLL (左右)</span>
-            <span id="roll" class="value">0</span>
-        </div>
-    </div>
+    <div id="txLight" id="indicator"></div><br>
+    <div class="val-box">P: <span id="pitch">0</span></div>
+    <div class="val-box">R: <span id="roll">0</span></div>
 
     <script>
         const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
         const UART_TX_CHARACTERISTIC_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
         let txChar = null;
-        let lastSendTime = 0;
-
-        function mapTilt(angle, deadzone, maxAngle) {
-            const absAngle = Math.abs(angle);
-            if (absAngle <= deadzone) return 0;
-            // デッドゾーンを超えたところから maxAngle までを 0〜10 にマッピング
-            let val = (absAngle - deadzone) * (10 / (maxAngle - deadzone));
-            val = Math.min(10, Math.max(0, val)); // 0〜10にクランプ
-            return Math.round(val * (angle >= 0 ? 1 : -1));
-        }
-
-        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-            document.getElementById('permissionBtn').addEventListener('click', () => {
-                DeviceOrientationEvent.requestPermission().then(res => {
-                    if (res === 'granted') {
-                        document.getElementById('permissionBtn').style.opacity = '0.3';
-                        startOrientation();
-                    }
-                });
-            });
-        } else {
-            document.getElementById('permissionBtn').style.display = 'none';
-            startOrientation();
-        }
 
         function startOrientation() {
             window.addEventListener('deviceorientation', (event) => {
-                const pAngle = event.beta || 0;
-                const rAngle = event.gamma || 0;
-                
-                // 前後: 30°で10, DZ: 2
-                const pitch = mapTilt(pAngle, 2, 30);
-                // 左右: 20°で10, DZ: 3
-                const roll = mapTilt(rAngle, 3, 20);
-
-                document.getElementById('pitch').innerText = pitch;
-                document.getElementById('roll').innerText = roll;
+                let p = Math.round((event.beta || 0) * (10 / 30));
+                let r = Math.round((event.gamma || 0) * (10 / 20));
+                p = Math.max(-10, Math.min(10, p));
+                r = Math.max(-10, Math.min(10, r));
+                document.getElementById('pitch').innerText = p;
+                document.getElementById('roll').innerText = r;
 
                 if (txChar) {
-                    const now = Date.now();
-                    if (now - lastSendTime > 100) {
-                        const data = pitch + "," + roll + "\n";
-                        txChar.writeValue(new TextEncoder().encode(data)).catch(e => console.log(e));
-                        lastSendTime = now;
-                    }
+                    const data = p + "," + r + "\n";
+                    txChar.writeValue(new TextEncoder().encode(data))
+                        .then(() => {
+                            document.getElementById('txLight').style.background = "#5cb85c"; // 送信成功で緑
+                            setTimeout(() => document.getElementById('txLight').style.background = "#555", 50);
+                        }).catch(e => console.log(e));
                 }
             });
         }
 
+        document.getElementById('permissionBtn').addEventListener('click', () => {
+            DeviceOrientationEvent.requestPermission().then(res => { if(res === 'granted') startOrientation(); });
+        });
+
         document.getElementById('connectBtn').addEventListener('click', async () => {
-            try {
-                const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ namePrefix: 'BBC micro:bit' }],
-                    optionalServices: [UART_SERVICE_UUID]
-                });
-                const server = await device.gatt.connect();
-                const service = await server.getPrimaryService(UART_SERVICE_UUID);
-                txChar = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
-                document.getElementById('status').innerText = "CONNECTED";
-                document.getElementById('status').style.color = "#5cb85c";
-            } catch (error) { console.log(error); }
+            const device = await navigator.bluetooth.requestDevice({
+                filters: [{ namePrefix: 'BBC micro:bit' }],
+                optionalServices: [UART_SERVICE_UUID]
+            });
+            const server = await device.gatt.connect();
+            const service = await server.getPrimaryService(UART_SERVICE_UUID);
+            txChar = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
+            document.getElementById('status').innerText = "CONNECTED";
         });
     </script>
 </body>
