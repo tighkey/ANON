@@ -1,105 +1,66 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ANON v3.4 DEBUGGER</title>
+    <title>ANON v3.6 EMERGENCY</title>
     <style>
-        body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; padding-top: 10px; }
-        .btn { border: none; padding: 15px; font-size: 16px; border-radius: 10px; color: white; font-weight: bold; margin: 5px; width: 90%; }
-        #permissionBtn { background: #007aff; }
-        #connectBtn { background: #ff9500; }
-        #testBtn { background: #5cb85c; }
-        .log-box { font-size: 10px; margin: 10px; padding: 10px; background: #000; border-radius: 5px; color: #0f0; text-align: left; height: 180px; overflow-y: scroll; font-family: monospace; border: 1px solid #333; }
-        .indicator { width: 15px; height: 15px; background: #333; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: white; padding: 10px; }
+        .btn { border: none; padding: 20px; font-size: 18px; border-radius: 12px; color: white; width: 90%; margin: 5px; }
+        .log { font-size: 10px; background: #000; color: #0f0; text-align: left; height: 150px; overflow: scroll; padding: 10px; margin-top: 10px; border: 1px solid #333; }
     </style>
 </head>
 <body>
-    <h3>ANON FINAL DEBUG v3.4</h3>
-    
-    <button id="permissionBtn" class="btn">1. センサー有効化</button>
-    <button id="connectBtn" class="btn">2. ANON接続 (UART探索)</button>
-    <button id="testBtn" class="btn">3. 強制送信テスト</button>
-
-    <div style="font-size: 18px; margin: 10px;">P: <span id="pitch">0</span> | R: <span id="roll">0</span></div>
-    
-    <div id="log" class="log-box">--- DEBUG LOG ---<br></div>
+    <h3>ANON EMERGENCY v3.6</h3>
+    <button id="pBtn" class="btn" style="background:#007aff">1. センサーON</button>
+    <button id="cBtn" class="btn" style="background:#ff9500">2. ANONに接続</button>
+    <button id="tBtn" class="btn" style="background:#5cb85c">3. テスト送信</button>
+    <div id="log" class="log">> ログ待機中...<br></div>
 
     <script>
-        // micro:bit UART UUIDs
-        const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-        const UART_RX_CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // Phone -> micro:bit
-        
-        let txChar = null;
+        const UART_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+        const UART_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+        let tx = null;
 
-        function logger(msg) {
-            const logDiv = document.getElementById('log');
-            logDiv.innerHTML += "> " + msg + "<br>";
-            logDiv.scrollTop = logDiv.scrollHeight;
-            console.log(msg);
-        }
+        function logger(m) { const l = document.getElementById('log'); l.innerHTML += "> " + m + "<br>"; l.scrollTop = l.scrollHeight; }
 
-        // センサー
-        document.getElementById('permissionBtn').onclick = () => {
-            DeviceOrientationEvent.requestPermission().then(res => {
-                if(res === 'granted') {
-                    logger("センサー許可OK");
-                    window.addEventListener('deviceorientation', (e) => {
-                        let p = Math.max(-10, Math.min(10, Math.round((e.beta || 0) * (10 / 30))));
-                        let r = Math.max(-10, Math.min(10, Math.round((e.gamma || 0) * (10 / 20))));
-                        document.getElementById('pitch').innerText = p;
-                        document.getElementById('roll').innerText = r;
-                        if(txChar) send(p + "," + r + "\n");
-                    });
-                }
-            });
+        document.getElementById('pBtn').onclick = () => {
+            DeviceOrientationEvent.requestPermission().then(r => { if(r==='granted') logger("センサー許可"); });
         };
 
-        // Bluetooth接続
-        document.getElementById('connectBtn').onclick = async () => {
+        document.getElementById('cBtn').onclick = async () => {
             try {
-                logger("探索開始...");
-                const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ namePrefix: 'BBC micro:bit' }],
-                    optionalServices: [UART_SERVICE_UUID]
-                });
-                
-                logger("GATT接続中...");
-                const server = await device.gatt.connect();
-                
-                logger("UARTサービス検索...");
-                const service = await server.getPrimaryService(UART_SERVICE_UUID);
-                
-                logger("RX窓口(0002)を検索...");
-                txChar = await service.getCharacteristic(UART_RX_CHAR_UUID);
-                
-                logger("【成功】送信準備完了！");
-                alert("リンク成功！");
-            } catch (e) {
-                logger("エラー: " + e.name + " - " + e.message);
-                alert("失敗: " + e.message);
-            }
+                logger("探索...");
+                const d = await navigator.bluetooth.requestDevice({ filters:[{namePrefix:'BBC micro:bit'}], optionalServices:[UART_SERVICE] });
+                const s = await d.gatt.connect();
+                const sv = await s.getPrimaryService(UART_SERVICE);
+                tx = await sv.getCharacteristic(UART_RX);
+                logger("【接続成功】");
+            } catch(e) { logger("接続エラー: " + e); }
         };
 
-        // 送信関数
-        async function send(msg) {
-            if (!txChar) return;
-            try {
-                const data = new TextEncoder().encode(msg);
-                // writeValueWithoutResponseの方が高速で安定する場合があります
-                await txChar.writeValueWithoutResponse(data);
-            } catch (e) {
-                logger("送信失敗: " + e.message);
-                txChar = null; // エラー時はリセット
-            }
+        // 返事を待たずに送信する（フリーズ防止）
+        function send(m) {
+            if(!tx) return;
+            const data = new TextEncoder().encode(m);
+            tx.writeValueWithoutResponse(data).catch(e => logger("送信失敗: " + e));
         }
 
-        document.getElementById('testBtn').onclick = () => {
-            if(!txChar) { logger("未接続です"); return; }
-            logger("テストデータ送信...");
+        document.getElementById('tBtn').onclick = () => {
+            logger("強制送信: 5,0");
             send("5,0\n");
-            setTimeout(() => send("0,0\n"), 1000);
         };
+
+        window.addEventListener('deviceorientation', (e) => {
+            if(!tx) return;
+            let p = Math.max(-10, Math.min(10, Math.round((e.beta||0)*(10/30))));
+            let r = Math.max(-10, Math.min(10, Math.round((e.gamma||0)*(10/20))));
+            const now = Date.now();
+            if(now - (window.lt||0) > 200) {
+                send(p + "," + r + "\n");
+                window.lt = now;
+            }
+        });
     </script>
 </body>
 </html>
