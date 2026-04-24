@@ -234,7 +234,8 @@
         setStatus("ANON探索中...", "warn");
 
         bleDevice = await navigator.bluetooth.requestDevice({
-          filters: [{ services: [UART_SERVICE] }]
+          acceptAllDevices: true,
+          optionalServices: [UART_SERVICE]
         });
 
         bleDevice.addEventListener("gattserverdisconnected", onDisconnected);
