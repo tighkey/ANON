@@ -3,20 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ANON JOYSTICK v8.1</title>
+    <title>ANON JOYSTICK v8.5</title>
     <style>
         body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: #fff; touch-action: none; overflow: hidden; margin: 0; }
         #joystick-container { width: 280px; height: 280px; background: #333; border-radius: 50%; margin: 50px auto; position: relative; border: 4px solid #555; }
         #stick { width: 80px; height: 80px; background: #ff9500; border-radius: 50%; position: absolute; top: 100px; left: 100px; }
         .btn { border: none; padding: 20px; font-size: 18px; border-radius: 12px; color: white; width: 85%; margin: 20px; font-weight: bold; }
-        #debug { font-size: 24px; font-family: monospace; color: #0f0; }
     </style>
 </head>
 <body>
-    <h3>ANON JOYSTICK v8.1</h3>
+    <h3>ANON v8.5 FINAL TEST</h3>
     <button id="connect" class="btn" style="background:#ff9500">ANONに接続</button>
     <div id="joystick-container"><div id="stick"></div></div>
-    <div id="debug">0, 0</div>
+    <div id="debug" style="font-size:24px; color:#0f0;">0, 0</div>
 
     <script>
         const SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
@@ -28,9 +27,10 @@
 
         async function send(y, x) {
             if (!txChar) return;
-            // 確実に「\n」を付けて送る
-            const data = new TextEncoder().encode(y + "," + x + "\n");
-            txChar.writeValueWithoutResponse(data).catch(()=>{});
+            // 区切り文字を「!」に変更して確実に届ける
+            const data = new TextEncoder().encode(y + "," + x + "!");
+            // 確実な書き込み方式に変更
+            txChar.writeValue(data).catch(()=>{});
         }
 
         container.addEventListener('touchmove', e => {
@@ -50,7 +50,6 @@
 
         container.addEventListener('touchend', () => {
             stick.style.transform = `translate(0, 0)`;
-            document.getElementById('debug').innerText = "0, 0";
             send(0, 0);
         });
 
@@ -63,7 +62,7 @@
                 const server = await device.gatt.connect();
                 const service = await server.getPrimaryService(SVC);
                 txChar = await service.getCharacteristic(TX);
-                alert("ANON リンク完了！");
+                alert("ANON 通信開通！");
             } catch (e) { alert("Error: " + e); }
         };
     </script>
