@@ -3,94 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ANON v3.1 DEBUG</title>
+    <title>ANON v3.2 RECOVERY</title>
     <style>
         body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; padding-top: 20px; }
         .btn { border: none; padding: 20px; font-size: 18px; border-radius: 15px; color: white; font-weight: bold; margin: 10px; width: 85%; }
         #permissionBtn { background: #007aff; }
         #connectBtn { background: #ff9500; }
         .status-box { font-size: 14px; margin: 10px; padding: 10px; background: #333; border-radius: 10px; color: #aaa; }
-        .val-box { background: #444; padding: 20px; border-radius: 15px; width: 110px; display: inline-block; margin: 10px; }
         .indicator { width: 30px; height: 30px; background: #555; border-radius: 50%; display: inline-block; margin: 10px; border: 2px solid #000; }
-        #sensorInd { background: #555; } /* センサー状態 */
-        #btInd { background: #555; }     /* 送信状態 */
+        #sensorInd { background: #555; } 
+        #btInd { background: #555; }    
     </style>
 </head>
 <body>
-    <h2>ANON DEBUG v3.1</h2>
+    <h2>ANON v3.2 RECOVERY</h2>
     
     <button id="permissionBtn" class="btn">1. センサー許可</button>
-    <div id="status-sensor" class="status-box">センサー：未許可</div>
+    <div id="status-sensor" class="status-box">センサー：未稼働</div>
     
     <button id="connectBtn" class="btn">2. ANONに接続</button>
-    <div id="status-bt" class="status-box">Bluetooth：未接続</div>
+    <div id="status-bt" class="status-box">BT：未接続</div>
 
     <div>
         <div id="sensorInd" class="indicator"></div>
         <div id="btInd" class="indicator"></div>
     </div>
 
-    <div class="val-box">P: <span id="pitch">0</span></div>
-    <div class="val-box">R: <span id="roll">0</span></div>
+    <div style="font-size: 24px; margin-top: 20px; font-family: monospace;">
+        P: <span id="pitch">0</span> | R: <span id="roll">0</span>
+    </div>
 
     <script>
+        // micro:bit UART Service UUIDs
         const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-        const UART_TX_CHARACTERISTIC_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+        const UART_RX_CHARACTERISTIC_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
         let txChar = null;
+        let lastSendTime = 0;
 
-        // --- 1. センサー処理 ---
+        // 1. センサー
         function startOrientation() {
+            document.getElementById('sensorInd').style.background = "#007aff";
             document.getElementById('status-sensor').innerText = "センサー：動作中";
-            document.getElementById('sensorInd').style.background = "#007aff"; // センサー起動で青
-
             window.addEventListener('deviceorientation', (event) => {
-                let p = Math.round((event.beta || 0) * (10 / 30));
-                let r = Math.round((event.gamma || 0) * (10 / 20));
-                p = Math.max(-10, Math.min(10, p));
-                r = Math.max(-10, Math.min(10, r));
-
+                let p = Math.max(-10, Math.min(10, Math.round((event.beta || 0) * (10 / 30))));
+                let r = Math.max(-10, Math.min(10, Math.round((event.gamma || 0) * (10 / 20))));
                 document.getElementById('pitch').innerText = p;
                 document.getElementById('roll').innerText = r;
 
-                // 送信処理
                 if (txChar) {
-                    const data = p + "," + r + "\n";
-                    txChar.writeValue(new TextEncoder().encode(data))
-                        .then(() => {
-                            document.getElementById('btInd').style.background = "#5cb85c"; // 送信成功で緑
-                            setTimeout(() => document.getElementById('btInd').style.background = "#555", 50);
-                        }).catch(e => console.log(e));
+                    const now = Date.now();
+                    if (now - lastSendTime > 100) {
+                        const data = p + "," + r + "\n";
+                        txChar.writeValue(new TextEncoder().encode(data))
+                            .then(() => {
+                                document.getElementById('btInd').style.background = "#5cb85c"; // 緑点滅
+                                setTimeout(() => document.getElementById('btInd').style.background = "#ff9500", 50);
+                            })
+                            .catch(e => { console.log(e); });
+                        lastSendTime = now;
+                    }
                 }
             });
         }
 
         document.getElementById('permissionBtn').addEventListener('click', () => {
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(res => {
-                        if (res === 'granted') startOrientation();
-                        else alert("許可されませんでした");
-                    }).catch(e => alert("エラー: " + e));
-            } else {
-                startOrientation();
-            }
+                DeviceOrientationEvent.requestPermission().then(res => {
+                    if (res === 'granted') startOrientation();
+                });
+            } else { startOrientation(); }
         });
 
-        // --- 2. Bluetooth処理 ---
+        // 2. Bluetooth
         document.getElementById('connectBtn').addEventListener('click', async () => {
             try {
+                document.getElementById('status-bt').innerText = "デバイスを探しています...";
                 const device = await navigator.bluetooth.requestDevice({
                     filters: [{ namePrefix: 'BBC micro:bit' }],
                     optionalServices: [UART_SERVICE_UUID]
                 });
+
+                document.getElementById('status-bt').innerText = "接続中...";
                 const server = await device.gatt.connect();
+
+                document.getElementById('status-bt').innerText = "UARTサービスを検索中...";
                 const service = await server.getPrimaryService(UART_SERVICE_UUID);
-                txChar = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
-                
-                document.getElementById('status-bt').innerText = "Bluetooth：接続済み";
+
+                document.getElementById('status-bt').innerText = "キャラクタリスティックを検索中...";
+                txChar = await service.getCharacteristic(UART_RX_CHARACTERISTIC_UUID);
+
+                document.getElementById('status-bt').innerText = "準備完了！";
                 document.getElementById('btInd').style.background = "#ff9500"; // 接続でオレンジ
+                alert("接続に成功しました！");
+
             } catch (error) {
-                alert("接続エラー: " + error);
+                document.getElementById('status-bt').innerText = "エラー発生";
+                alert("接続失敗: " + error);
             }
         });
     </script>
